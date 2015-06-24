@@ -28,9 +28,21 @@
  Version 2.0.0 - Complete re-write.
  */
 var Lang = (function () {
+
+	//	Inhibitate extensive console.log() from within this library,
+	//	and provide another _console.log() for real debugging need
+	//	by Kenny Kwok, 2014/09/04
+	var	w = window,
+		_console = w.console,
+		console = { log: function(x) {} };
+
 	var Lang = function (defaultLang, currentLang, allowCookieOverride) {
 		var self = this,
 			cookieLang;
+
+	//	Actual scope of DOM collection of this translation engine
+	//	by Kenny Kwok, 2014/09/04
+		this._sel = "div,span,button,input,option,td,li,a,label";
 		
 		// Enable firing events
 		this._fireEvents = true;
@@ -51,6 +63,14 @@ var Lang = (function () {
 		
 		// Now override the existing mutation methods with our own
 		$.fn.append = function () { return self._mutation(this, 'append', arguments) };
+	//	Smarter .append() overriding function, eliminated redundent
+	//	translation scan upon .append() action
+	//	by Kenny Kwok, 2014/09/04
+		$.fn.append = function() {
+			return this.closest("html").length ?
+				self._mutation(this, 'append', arguments) :
+				self._mutationCopies['append'].apply(this, arguments);
+		};
 		$.fn.appendTo = function () { return self._mutation(this, 'appendTo', arguments) };
 		$.fn.prepend = function () { return self._mutation(this, 'prepend', arguments) };
 		$.fn.before = function () { return self._mutation(this, 'before', arguments) };
@@ -168,6 +188,17 @@ var Lang = (function () {
 	 * @private
 	 */
 	Lang.prototype._start = function (selector) {
+	//	Query Selector on actual scope of DOM collection,
+	//	regardless of existance of attribute lang=...
+	//	by Kenny Kwok, 2014/09/04
+		var 	self = this,
+			arr = selector !== undefined ?
+				$(selector).find(this._sel) : $(this._sel);
+		arr.each(function() {
+			self._processElement($(this));
+		});
+		return;
+
 		// Get the page HTML
 		var arr = selector !== undefined ? $(selector).find('[lang]') : $(':not(html)[lang]'),
 			arrCount = arr.length,
@@ -179,9 +210,25 @@ var Lang = (function () {
 		}
 	};
 	
-	Lang.prototype._processElement = function (elem) {
+	Lang.prototype._processElement = function (elem, inherit) {
 		// Only store data if the element is set to our default language
+
+	//	Include from translation scope DOM element without attr lang=...
+	//	by Kenny Kwok, 2014/09/04
+		if (!elem.attr('lang')) {
+			elem.attr('lang', this.defaultLang);
+		}
+
 		if (elem.attr('lang') === this.defaultLang) {
+
+	//	Debugging counter (to be removed eventually)
+	//	by Kenny Kwok, 2014/09/04
+			if (!inherit) {
+				var s = "inspectE";
+				var i = elem.attr(s);
+				elem.attr(s, i ? +i + 1 : 1);
+			}
+
 			// Store translatable attributes
 			this._storeAttribs(elem);
 	
@@ -441,6 +488,16 @@ var Lang = (function () {
 			this.currentLang = lang;
 			
 			// Get the page HTML
+			var 	self = this,
+				arr = selector !== undefined ?
+					$(selector).find(this._sel) : $(this._sel);
+			arr.each(function() {
+				var	elem = $(this);
+				if (elem.attr("lang") !== lang) {
+					self._translateElement(elem, lang);
+				}
+			});
+/*
 			var arr = selector !== undefined ? $(selector).find('[lang]') : $(':not(html)[lang]'),
 				arrCount = arr.length,
 				elem;
@@ -452,6 +509,7 @@ var Lang = (function () {
 					this._translateElement(elem, lang);
 				}
 			}
+*/
 			
 			if (fireAfterUpdate) {
 				this.afterUpdate(currLang, lang);
@@ -585,7 +643,22 @@ var Lang = (function () {
 			currLang = this.currentLang,
 			rootElem = $(context);
 		
+	//	Include from translation scope DOM element without attr lang=...
+	//	by Kenny Kwok, 2014/09/04
+		if (!rootElem.attr('lang')) {
+			rootElem.attr('lang', this.currentLang);
+		}
+
 		if (rootElem.attr('lang')) {
+
+	//	Debugging counter (to be removed eventually)
+	//	by Kenny Kwok, 2014/09/04
+			{
+				var	s = "inspectM",
+					i = rootElem.attr(s);
+				rootElem.attr(s, i ? +i + 1 : 1);
+			}
+
 			// Switch off events for the moment
 			this._fireEvents = false;
 			
@@ -599,7 +672,7 @@ var Lang = (function () {
 				this.currentLang = currLang;
 				
 				// Record data on the default language from the root element
-				this._processElement(rootElem);
+				this._processElement(rootElem, true);
 				
 				// Translate the root element
 				this._translateElement(rootElem, this.currentLang);
